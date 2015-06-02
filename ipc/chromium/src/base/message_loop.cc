@@ -411,6 +411,7 @@ bool MessageLoop::DeletePendingTasks() {
   if (!work_queue_.empty()) {
     Task* task = work_queue_.front().task;
     tracked_objects::Location loc = task->GetBirthPlace();
+    NS_WARNING("Unexpected task!");
     printf("Unexpected task! %s:%s:%d\n",
 	   loc.function_name(), loc.file_name(), loc.line_number());
   }
