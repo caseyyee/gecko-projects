@@ -1,0 +1,296 @@
+From 606efea4134860cced0c40184db40e5483d3b31c Mon Sep 17 00:00:00 2001
+From: "Kearwood \"Kip\" Gilbert" <kgilbert@mozilla.com>
+Date: Fri, 5 Jun 2015 13:16:59 -0700
+Subject: [PATCH] Bug 1158562 - Experimental fix for CSS Transform clipping 
+ issues in VR
+
+---
+ gfx/2d/Matrix.cpp                    | 93 ++++++++++++++++++++++++++++++++++++
+ gfx/2d/Matrix.h                      |  5 ++
+ gfx/layers/basic/BasicCompositor.cpp | 22 ++++-----
+ gfx/layers/opengl/CompositorOGL.cpp  |  4 +-
+ gfx/thebes/gfx3DMatrix.cpp           | 14 ++++++
+ layout/base/nsDisplayList.cpp        |  4 +-
+ 6 files changed, 124 insertions(+), 18 deletions(-)
+
+diff --git a/gfx/2d/Matrix.cpp b/gfx/2d/Matrix.cpp
+index bbd8d70..6f1cc95 100644
+--- a/gfx/2d/Matrix.cpp
++++ b/gfx/2d/Matrix.cpp
+@@ -102,6 +102,16 @@ Matrix::NudgeToIntegers()
+ Rect
+ Matrix4x4::TransformBounds(const Rect& aRect) const
+ {
++  Point4D verts[4];
++  verts[0] = *this * Point4D(aRect.x, aRect.y, 0.0, 1.0);
++  verts[1] = *this * Point4D(aRect.XMost(), aRect.y, 0.0, 1.0);
++  verts[2] = *this * Point4D(aRect.XMost(), aRect.YMost(), 0.0, 1.0);
++  verts[3] = *this * Point4D(aRect.x, aRect.YMost(), 0.0, 1.0);
++
++  if(verts[0].w < 0.0 || verts[1].w < 0.0 || verts[2].w < 0.0 || verts[3].w < 0.0) {
++     return TransformAndClipBounds(aRect, Rect(-10000000, -10000000, 20000000, 20000000));
++  }
++
+   Point quad[4];
+   Float min_x, max_x;
+   Float min_y, max_y;
+@@ -227,6 +237,89 @@ Rect Matrix4x4::ProjectRectBounds(const Rect& aRect, const Rect &aClip) const
+   return Rect(min_x, min_y, max_x - min_x, max_y - min_y);
+ }
+ 
++Rect
++Matrix4x4::TransformAndClipBounds(const Rect& aRect, const Rect& aClip) const
++{
++  Point verts[kTransformAndClipRectMaxVerts];
++  size_t vertCount = TransformAndClipRect(aRect, aClip, verts);
++
++  float min_x = std::numeric_limits<float>::max();
++  float min_y = std::numeric_limits<float>::max();
++  float max_x = -std::numeric_limits<float>::max();
++  float max_y = -std::numeric_limits<float>::max();
++  for (size_t i=0; i < vertCount; i++) {
++    min_x = std::min(min_x, verts[i].x);
++    max_x = std::max(max_x, verts[i].x);
++    min_y = std::min(min_y, verts[i].y);
++    max_y = std::max(max_y, verts[i].y);
++  }
++
++  if (max_x < min_x || max_y < min_y) {
++    return Rect(0, 0, 0, 0);
++  }
++
++  return Rect(min_x, min_y, max_x - min_x, max_y - min_y);
++
++}
++
++ bool
++Matrix4x4::TransformAndClipLine(Point& aPoint1, Point& aPoint2, const Rect& aClip) const
++{
++  // View frustum clipping planes are described as normals originating from
++  // the 0,0,0,0 origin.
++  Point4D planeNormals[4];
++  planeNormals[0] = Point4D(1.0, 0.0, 0.0, -aClip.x);
++  planeNormals[1] = Point4D(-1.0, 0.0, 0.0, aClip.XMost());
++  planeNormals[2] = Point4D(0.0, 1.0, 0.0, -aClip.y);
++  planeNormals[3] = Point4D(0.0, -1.0, 0.0, aClip.YMost());
++
++  Point4D vert1 = *this * Point4D(aPoint1.x, aPoint1.y, 0.0, 1.0);
++  Point4D vert2 = *this * Point4D(aPoint2.x, aPoint2.y, 0.0, 1.0);
++
++  // Iterate through each clipping plane and clip the line.
++  for (int plane=0; plane < 4; plane++) {
++    planeNormals[plane].Normalize();
++    float dot1 = planeNormals[plane].DotProduct(vert1);
++    float dot2 = planeNormals[plane].DotProduct(vert2);
++    if (dot1 < 0.0 && dot2 < 0.0) {
++      // If both vertices of the line are outside the frustum, we can reject
++      // the entire line.
++      return false;
++    }
++
++    if (dot1 < 0.0 || dot2 < 0.0) {
++      // Find the intersection between the line and the frustum clipping plane
++      float t = -dot1 / (dot2 - dot1);
++      Point4D intersect = vert2 * t + vert1 * (1.0 - t);
++
++      // Trim the end of the line that was outside the frustum
++      if (dot1 < 0.0) {
++        vert1 = intersect;
++      } else {
++        vert2 = intersect;
++      }
++    }
++  }
++
++  if (vert1.w == 0.0) {
++    // If a point lies on the intersection of the clipping planes at
++    // (0,0,0,0), we must avoid a division by zero w component.
++    aPoint1 = Point(0.0, 0.0);
++  } else {
++    aPoint1 = vert1.As2DPoint();
++  }
++
++  if (vert2.w == 0.0) {
++    // If a point lies on the intersection of the clipping planes at
++    // (0,0,0,0), we must avoid a division by zero w component.
++    aPoint2 = Point(0.0, 0.0);
++  } else {
++    aPoint2 = vert2.As2DPoint();
++  }
++
++  return true;
++}
++
+ size_t
+ Matrix4x4::TransformAndClipRect(const Rect& aRect, const Rect& aClip,
+                                 Point* aVerts) const
+diff --git a/gfx/2d/Matrix.h b/gfx/2d/Matrix.h
+index 61f58d6..3af6ab3 100644
+--- a/gfx/2d/Matrix.h
++++ b/gfx/2d/Matrix.h
+@@ -507,6 +507,11 @@ public:
+ 
+   Rect ProjectRectBounds(const Rect& aRect, const Rect &aClip) const;
+ 
++  Rect TransformAndClipBounds(const Rect& aRect, const Rect& aClip) const;
++
++  bool TransformAndClipLine(Point& aPoint1, Point& aPoint2,
++                            const Rect& aClip) const;
++
+   /**
+    * TransformAndClipRect projects a rectangle and clips against view frustum
+    * clipping planes in homogenous space so that its projected vertices are
+diff --git a/gfx/layers/basic/BasicCompositor.cpp b/gfx/layers/basic/BasicCompositor.cpp
+index febd74e..1de6700 100644
+--- a/gfx/layers/basic/BasicCompositor.cpp
++++ b/gfx/layers/basic/BasicCompositor.cpp
+@@ -182,7 +182,7 @@ DrawSurfaceWithTextureCoords(DrawTarget *aDest,
+ 
+ #ifdef MOZ_ENABLE_SKIA
+ static SkMatrix
+-Matrix3DToSkia(const gfx3DMatrix& aMatrix)
++Matrix3DToSkia(const Matrix4x4& aMatrix)
+ {
+   SkMatrix transform;
+   transform.setAll(aMatrix._11,
+@@ -201,7 +201,7 @@ Matrix3DToSkia(const gfx3DMatrix& aMatrix)
+ static void
+ Transform(DataSourceSurface* aDest,
+           DataSourceSurface* aSource,
+-          const gfx3DMatrix& aTransform,
++          const Matrix4x4& aTransform,
+           const Point& aDestOffset)
+ {
+   if (aTransform.IsSingular()) {
+@@ -227,8 +227,8 @@ Transform(DataSourceSurface* aDest,
+   src.setInfo(srcInfo, aSource->Stride());
+   src.setPixels((uint32_t*)aSource->GetData());
+ 
+-  gfx3DMatrix transform = aTransform;
+-  transform.TranslatePost(Point3D(-aDestOffset.x, -aDestOffset.y, 0));
++  Matrix4x4 transform = aTransform;
++  transform.PostTranslate(Point3D(-aDestOffset.x, -aDestOffset.y, 0));
+   destCanvas.setMatrix(Matrix3DToSkia(transform));
+ 
+   SkPaint paint;
+@@ -240,7 +240,7 @@ Transform(DataSourceSurface* aDest,
+ }
+ #else
+ static pixman_transform
+-Matrix3DToPixman(const gfx3DMatrix& aMatrix)
++Matrix3DToPixman(const Matrix4x4& aMatrix)
+ {
+   pixman_f_transform transform;
+ 
+@@ -263,7 +263,7 @@ Matrix3DToPixman(const gfx3DMatrix& aMatrix)
+ static void
+ Transform(DataSourceSurface* aDest,
+           DataSourceSurface* aSource,
+-          const gfx3DMatrix& aTransform,
++          const Matrix4x4& aTransform,
+           const Point& aDestOffset)
+ {
+   IntSize destSize = aDest->GetSize();
+@@ -337,7 +337,7 @@ BasicCompositor::DrawQuad(const gfx::Rect& aRect,
+ 
+   Matrix newTransform;
+   Rect transformBounds;
+-  gfx3DMatrix new3DTransform;
++  Matrix4x4 new3DTransform;
+   IntPoint offset = mRenderTarget->GetOrigin();
+ 
+   if (aTransform.Is2D()) {
+@@ -352,11 +352,7 @@ BasicCompositor::DrawQuad(const gfx::Rect& aRect,
+     dest->SetTransform(Matrix::Translation(-aRect.x, -aRect.y));
+ 
+     // Get the bounds post-transform.
+-    new3DTransform = To3DMatrix(aTransform);
+-    gfxRect bounds = new3DTransform.TransformBounds(ThebesRect(aRect));
+-    bounds.IntersectRect(bounds, gfxRect(offset.x, offset.y, buffer->GetSize().width, buffer->GetSize().height));
+-
+-    transformBounds = ToRect(bounds);
++    transformBounds = aTransform.TransformAndClipBounds(aRect, Rect(offset.x, offset.y, buffer->GetSize().width, buffer->GetSize().height));
+     transformBounds.RoundOut();
+ 
+     // Propagate the coordinate offset to our 2D draw target.
+@@ -364,7 +360,7 @@ BasicCompositor::DrawQuad(const gfx::Rect& aRect,
+ 
+     // When we apply the 3D transformation, we do it against a temporary
+     // surface, so undo the coordinate offset.
+-    new3DTransform = gfx3DMatrix::Translation(aRect.x, aRect.y, 0) * new3DTransform;
++    new3DTransform = Matrix4x4::Translation(aRect.x, aRect.y, 0) * aTransform;
+   }
+ 
+   newTransform.PostTranslate(-offset.x, -offset.y);
+diff --git a/gfx/layers/opengl/CompositorOGL.cpp b/gfx/layers/opengl/CompositorOGL.cpp
+index bb01d07..90ff345 100644
+--- a/gfx/layers/opengl/CompositorOGL.cpp
++++ b/gfx/layers/opengl/CompositorOGL.cpp
+@@ -1016,9 +1016,7 @@ CompositorOGL::DrawQuad(const Rect& aRect,
+   }
+ 
+   {
+-    // XXX: This doesn't handle 3D transforms. It also doesn't handled rotated
+-    //      quads. Fix me.
+-    const Rect destRect = aTransform.TransformBounds(aRect);
++    const Rect destRect = aTransform.TransformAndClipBounds(aRect, aClipRect);
+     mPixelsFilled += destRect.width * destRect.height;
+   }
+ 
+diff --git a/gfx/thebes/gfx3DMatrix.cpp b/gfx/thebes/gfx3DMatrix.cpp
+index 4277493..396d7ca 100644
+--- a/gfx/thebes/gfx3DMatrix.cpp
++++ b/gfx/thebes/gfx3DMatrix.cpp
+@@ -617,6 +617,19 @@ gfx3DMatrix::Transform4D(const Point4D& aPoint) const
+ gfxRect
+ gfx3DMatrix::TransformBounds(const gfxRect& rect) const
+ {
++
++  Rect ret;
++
++  Matrix4x4 mat(_11, _12, _13, _14,
++                _21, _22, _23, _24,
++                _31, _32, _33, _34,
++                _41, _42, _43, _44);
++
++  ret = mat.TransformBounds(Rect(rect.x, rect.y, rect.width, rect.height));
++
++  return gfxRect(ret.x, ret.y, ret.width, ret.height);
++  /*
++
+   gfxPoint points[4];
+ 
+   points[0] = Transform(rect.TopLeft());
+@@ -639,6 +652,7 @@ gfx3DMatrix::TransformBounds(const gfxRect& rect) const
+   }
+ 
+   return gfxRect(min_x, min_y, max_x - min_x, max_y - min_y);
++  */
+ }
+ 
+ gfxQuad 
+diff --git a/layout/base/nsDisplayList.cpp b/layout/base/nsDisplayList.cpp
+index 638eb93..8f03d41 100644
+--- a/layout/base/nsDisplayList.cpp
++++ b/layout/base/nsDisplayList.cpp
+@@ -5597,7 +5597,7 @@ bool nsDisplayTransform::UntransformRect(const nsRect &aTransformedBounds,
+ bool nsDisplayTransform::UntransformVisibleRect(nsDisplayListBuilder* aBuilder,
+                                                 nsRect *aOutRect)
+ {
+-  const gfx3DMatrix& matrix = To3DMatrix(GetTransform());
++  const Matrix4x4& matrix = GetTransform();
+   if (matrix.IsSingular())
+     return false;
+ 
+@@ -5616,7 +5616,7 @@ bool nsDisplayTransform::UntransformVisibleRect(nsDisplayListBuilder* aBuilder,
+                       NSAppUnitsToFloatPixels(childBounds.height, factor));
+ 
+   /* We want to untransform the matrix, so invert the transformation first! */
+-  result = ToMatrix4x4(matrix.Inverse()).ProjectRectBounds(result, childGfxBounds);
++  result = matrix.Inverse().ProjectRectBounds(result, childGfxBounds);
+ 
+   *aOutRect = nsLayoutUtils::RoundGfxRectToAppRect(ThebesRect(result), factor);
+ 
+-- 
+2.2.1
+

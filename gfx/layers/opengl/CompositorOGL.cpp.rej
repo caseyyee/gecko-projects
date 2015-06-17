@@ -1,0 +1,19 @@
+***************
+*** 1016,1024 ****
+    }
+  
+    {
+-     // XXX: This doesn't handle 3D transforms. It also doesn't handled rotated
+-     //      quads. Fix me.
+-     const Rect destRect = aTransform.TransformBounds(aRect);
+      mPixelsFilled += destRect.width * destRect.height;
+    }
+  
+--- 1016,1022 ----
+    }
+  
+    {
++     const Rect destRect = aTransform.TransformAndClipBounds(aRect, aClipRect);
+      mPixelsFilled += destRect.width * destRect.height;
+    }
+  
