@@ -971,7 +971,7 @@ CompositorOGL::DrawQuad(const Rect& aRect,
     return;
   }
 
-  const Rect destRect = aTransform.TransformAndClipBounds(aRect, aClipRect);
+  Rect destRect = aTransform.TransformAndClipBounds(aRect, aClipRect);
   mPixelsFilled += destRect.width * destRect.height;
 
   // Do a simple culling if this rect is out of target buffer.

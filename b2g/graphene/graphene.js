@@ -30,6 +30,7 @@ pref("layers.async-pan-zoom.enabled", false);
 
 pref("gfx.vsync.hw-vsync.enabled", true);
 pref("gfx.vsync.compositor", true);
+pref("gfx.vr.mirror-textures", true);
 
 // To be removed once bug 942756 is fixed.
 pref("devtools.debugger.unix-domain-socket", "6000");
@@ -45,3 +46,7 @@ pref("b2g.nativeWindowGeometry.height", 600);
 pref("b2g.nativeWindowGeometry.screenX", 0);
 pref("b2g.nativeWindowGeometry.screenY", 0);
 pref("b2g.nativeWindowGeometry.fullscreen", false);
+
+#ifdef ENABLE_MARIONETTE
+pref("b2g.is_mulet", true);
+#endif
