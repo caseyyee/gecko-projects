@@ -1287,7 +1287,7 @@ ContainerLayer::DefaultComputeEffectiveTransforms(const Matrix4x4& aTransformToS
     }
   }
 
-  mUseIntermediateSurface = useIntermediateSurface /*&& !GetEffectiveVisibleRegion().IsEmpty()*/;
+  mUseIntermediateSurface = useIntermediateSurface && !GetEffectiveVisibleRegion().IsEmpty();
   if (useIntermediateSurface) {
     ComputeEffectiveTransformsForChildren(residual);
   } else {

@@ -1972,14 +1972,17 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
         nsDisplayTransform::ShouldPrerenderTransformedContent(aBuilder, this)) {
       dirtyRect = overflow;
     } else {
+    /* FINDME!!! KIP!!! HACK!!!
       if (overflow.IsEmpty() && !Preserves3DChildren()) {
         return;
       }
+    */
 
       nsRect untransformedDirtyRect;
       if (nsDisplayTransform::UntransformRect(dirtyRect, overflow, this,
             nsPoint(0,0), &untransformedDirtyRect)) {
         dirtyRect = untransformedDirtyRect;
+
       } else {
         NS_WARNING("Unable to untransform dirty rect!");
         // This should only happen if the transform is singular, in which case nothing is visible anyway
@@ -1988,6 +1991,7 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
     }
     inTransform = true;
   }
+  dirtyRect = nsRect(-10000 * 60,-10000 * 60, 20000 * 60, 20000 * 60); // FINDME!!! KIP!!! HACK!!!
 
   bool usingSVGEffects = nsSVGIntegrationUtils::UsingEffectsForFrame(this);
   nsRect dirtyRectOutsideSVGEffects = dirtyRect;
@@ -2035,7 +2039,7 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
     nsRect clipPropClip;
     if (ApplyClipPropClipping(aBuilder, this, disp, &clipPropClip,
                               nestedClipState)) {
-      dirtyRect.IntersectRect(dirtyRect, clipPropClip);
+      // dirtyRect.IntersectRect(dirtyRect, clipPropClip); FINDME!!! KIP!!! HACK!!!
     }
 
     MarkAbsoluteFramesForDisplayList(aBuilder, dirtyRect);
@@ -7336,12 +7340,12 @@ UnionBorderBoxes(nsIFrame* aFrame, bool aApplyTransform,
       // overflow areas.
       nsRect childRect = UnionBorderBoxes(child, true) +
                          child->GetPosition();
-
+/*
       if (hasClipPropClip) {
         // Intersect with the clip before transforming.
         childRect.IntersectRect(childRect, clipPropClipRect);
       }
-
+*/
       // Note that we transform each child separately according to
       // aFrame's transform, and then union, which gives a different
       // (smaller) result from unioning and then transforming the

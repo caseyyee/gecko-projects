@@ -1,0 +1,223 @@
+From 1504e194d70e89310501a04ea527b3fbb426b69c Mon Sep 17 00:00:00 2001
+From: "Kearwood \"Kip\" Gilbert" <kgilbert@mozilla.com>
+Date: Mon, 8 Jun 2015 13:44:45 -0700
+Subject: [PATCH] Hack hack fun time, do not commit this!
+
+---
+ gfx/layers/Layers.cpp                            |  2 +-
+ gfx/layers/client/ClientContainerLayer.h         |  6 +++---
+ gfx/layers/composite/ContainerLayerComposite.cpp |  8 ++++++--
+ layout/base/FrameLayerBuilder.cpp                |  6 ++++--
+ layout/base/nsLayoutUtils.cpp                    |  1 +
+ layout/generic/nsFrame.cpp                       | 10 +++++++---
+ modules/libpref/init/all.js                      |  4 ++--
+ 7 files changed, 24 insertions(+), 13 deletions(-)
+
+diff --git a/gfx/layers/Layers.cpp b/gfx/layers/Layers.cpp
+index 0fa4686..0b73d39 100644
+--- a/gfx/layers/Layers.cpp
++++ b/gfx/layers/Layers.cpp
+@@ -1282,7 +1282,7 @@ ContainerLayer::DefaultComputeEffectiveTransforms(const Matrix4x4& aTransformToS
+     }
+   }
+ 
+-  mUseIntermediateSurface = useIntermediateSurface && !GetEffectiveVisibleRegion().IsEmpty();
++  mUseIntermediateSurface = useIntermediateSurface /*&& !GetEffectiveVisibleRegion().IsEmpty()*/;
+   if (useIntermediateSurface) {
+     ComputeEffectiveTransformsForChildren(residual);
+   } else {
+diff --git a/gfx/layers/client/ClientContainerLayer.h b/gfx/layers/client/ClientContainerLayer.h
+index cb6cafc..af0204e 100644
+--- a/gfx/layers/client/ClientContainerLayer.h
++++ b/gfx/layers/client/ClientContainerLayer.h
+@@ -62,13 +62,13 @@ public:
+     for (uint32_t i = 0; i < children.Length(); i++) {
+       Layer* child = children.ElementAt(i);
+       if (child->GetEffectiveVisibleRegion().IsEmpty()) {
+-        continue;
++        // continue;
+       }
+ 
+       ToClientLayer(child)->RenderLayerWithReadback(&readback);
+ 
+-      if (!ClientManager()->GetRepeatTransaction() &&
+-          !child->GetInvalidRegion().IsEmpty()) {
++      if (!ClientManager()->GetRepeatTransaction() /*&&
++          !child->GetInvalidRegion().IsEmpty()*/) {
+         child->Mutated();
+       }
+     }
+diff --git a/gfx/layers/composite/ContainerLayerComposite.cpp b/gfx/layers/composite/ContainerLayerComposite.cpp
+index 050820e..82d65f0 100755
+--- a/gfx/layers/composite/ContainerLayerComposite.cpp
++++ b/gfx/layers/composite/ContainerLayerComposite.cpp
+@@ -216,15 +216,17 @@ ContainerRenderVR(ContainerT* aContainer,
+     Layer* layer = layerToRender->GetLayer();
+     uint32_t contentFlags = layer->GetContentFlags();
+ 
++/*
+     if (layer->GetEffectiveVisibleRegion().IsEmpty() &&
+         !layer->AsContainerLayer()) {
+       continue;
+     }
++*/
+ 
+     const gfx::Matrix4x4 childTransform = layer->GetEffectiveTransform();
+     // We flip between pre-rendered and Gecko-rendered VR based on whether
+     // the child layer of this VR container layer has PRESERVE_3D or not.
+-    if (contentFlags & Layer::CONTENT_PRESERVE_3D == 0) {
++    if ((contentFlags & Layer::CONTENT_PRESERVE_3D) == 0) {
+       // This layer is native VR
+       DUMP("%p Switching to pre-rendered VR\n", aContainer);
+ 
+@@ -241,7 +243,7 @@ ContainerRenderVR(ContainerT* aContainer,
+       // up/down.
+       nsIntRect layerBounds = layer->GetLayerBounds();
+       DUMP("  layer %p bounds [%d %d %d %d] surfaceRect [%d %d %d %d]\n",
+-           XYWH(layerBounds), XYWH(surfaceRect));
++           layer, XYWH(layerBounds), XYWH(surfaceRect));
+       bool restoreTransform = false;
+       if (layerBounds.width != surfaceRect.width ||
+           layerBounds.height != surfaceRect.height)
+@@ -363,6 +365,7 @@ ContainerPrepare(ContainerT* aContainer,
+ 
+     // We don't want to skip container layers because otherwise their mPrepared
+     // may be null which is not allowed.
++    /*
+     if (!layerToRender->GetLayer()->AsContainerLayer()) {
+       if (layerToRender->GetLayer()->GetEffectiveVisibleRegion().IsEmpty()) {
+         CULLING_LOG("Sublayer %p has no effective visible region\n", layerToRender->GetLayer());
+@@ -374,6 +377,7 @@ ContainerPrepare(ContainerT* aContainer,
+         continue;
+       }
+     }
++    */
+ 
+     CULLING_LOG("Preparing sublayer %p\n", layerToRender->GetLayer());
+ 
+diff --git a/layout/base/FrameLayerBuilder.cpp b/layout/base/FrameLayerBuilder.cpp
+index 57cfe1d..5fc3203 100644
+--- a/layout/base/FrameLayerBuilder.cpp
++++ b/layout/base/FrameLayerBuilder.cpp
+@@ -2939,7 +2939,7 @@ ContainerState::PrepareImageLayer(PaintedLayerData* aData)
+     ParentLayerIntRect clip =
+       ViewAs<ParentLayerPixel>(ScaleToNearestPixels(aData->mItemClip.GetClipRect()));
+     clip.MoveBy(ViewAs<ParentLayerPixel>(mParameters.mOffset));
+-    imageLayer->SetClipRect(Some(clip));
++    imageLayer->SetClipRect(Nothing()); // FINDME!!! KIP!!! HACK!!! Return to imageLayer->SetClipRect(Some(clip));
+   } else {
+     imageLayer->SetClipRect(Nothing());
+   }
+@@ -3706,10 +3706,12 @@ ContainerState::ProcessDisplayItems(nsDisplayList* aList)
+       // Note that items without their own layers can't be skipped this
+       // way, since their PaintedLayer may decide it wants to draw them
+       // into its buffer even if they're currently covered.
++      /*
+       if (itemVisibleRect.IsEmpty() &&
+           !item->ShouldBuildLayerEvenIfInvisible(mBuilder)) {
+         continue;
+       }
++      */
+ 
+       // 3D-transformed layers don't necessarily draw in the order in which
+       // they're added to their parent container layer.
+@@ -3799,7 +3801,7 @@ ContainerState::ProcessDisplayItems(nsDisplayList* aList)
+                    "If we have rounded rects, we must have a clip rect");
+       // It has its own layer. Update that layer's clip and visible rects.
+       if (itemClip.HasClip()) {
+-        ownLayer->SetClipRect(Some(clipRect));
++        ownLayer->SetClipRect(Nothing()); // FINDME!!! KIP!!! HACK!! ownLayer->SetClipRect(Some(clipRect));
+       } else {
+         ownLayer->SetClipRect(Nothing());
+       }
+diff --git a/layout/base/nsLayoutUtils.cpp b/layout/base/nsLayoutUtils.cpp
+index e9a8851..e242ead 100644
+--- a/layout/base/nsLayoutUtils.cpp
++++ b/layout/base/nsLayoutUtils.cpp
+@@ -3091,6 +3091,7 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
+   }
+ 
+   nsRect canvasArea(nsPoint(0, 0), aFrame->GetSize());
++
+   bool ignoreViewportScrolling =
+     aFrame->GetParent() ? false : presShell->IgnoringViewportScrolling();
+   if (ignoreViewportScrolling && rootScrollFrame) {
+diff --git a/layout/generic/nsFrame.cpp b/layout/generic/nsFrame.cpp
+index 30b2aeb..cf81550 100644
+--- a/layout/generic/nsFrame.cpp
++++ b/layout/generic/nsFrame.cpp
+@@ -1972,14 +1972,17 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
+         nsDisplayTransform::ShouldPrerenderTransformedContent(aBuilder, this)) {
+       dirtyRect = overflow;
+     } else {
++    /* FINDME!!! KIP!!! HACK!!!
+       if (overflow.IsEmpty() && !Preserves3DChildren()) {
+         return;
+       }
++    */
+ 
+       nsRect untransformedDirtyRect;
+       if (nsDisplayTransform::UntransformRect(dirtyRect, overflow, this,
+             nsPoint(0,0), &untransformedDirtyRect)) {
+         dirtyRect = untransformedDirtyRect;
++
+       } else {
+         NS_WARNING("Unable to untransform dirty rect!");
+         // This should only happen if the transform is singular, in which case nothing is visible anyway
+@@ -1988,6 +1991,7 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
+     }
+     inTransform = true;
+   }
++  dirtyRect = nsRect(-10000 * 60,-10000 * 60, 20000 * 60, 20000 * 60); // FINDME!!! KIP!!! HACK!!!
+ 
+   bool usingSVGEffects = nsSVGIntegrationUtils::UsingEffectsForFrame(this);
+   nsRect dirtyRectOutsideSVGEffects = dirtyRect;
+@@ -2035,7 +2039,7 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
+     nsRect clipPropClip;
+     if (ApplyClipPropClipping(aBuilder, this, disp, &clipPropClip,
+                               nestedClipState)) {
+-      dirtyRect.IntersectRect(dirtyRect, clipPropClip);
++      // dirtyRect.IntersectRect(dirtyRect, clipPropClip); FINDME!!! KIP!!! HACK!!!
+     }
+ 
+     MarkAbsoluteFramesForDisplayList(aBuilder, dirtyRect);
+@@ -7336,12 +7340,12 @@ UnionBorderBoxes(nsIFrame* aFrame, bool aApplyTransform,
+       // overflow areas.
+       nsRect childRect = UnionBorderBoxes(child, true) +
+                          child->GetPosition();
+-
++/*
+       if (hasClipPropClip) {
+         // Intersect with the clip before transforming.
+         childRect.IntersectRect(childRect, clipPropClipRect);
+       }
+-
++*/
+       // Note that we transform each child separately according to
+       // aFrame's transform, and then union, which gives a different
+       // (smaller) result from unioning and then transforming the
+diff --git a/modules/libpref/init/all.js b/modules/libpref/init/all.js
+index 902c681..35d26ae 100644
+--- a/modules/libpref/init/all.js
++++ b/modules/libpref/init/all.js
+@@ -1062,7 +1062,7 @@ pref("dom.event.highrestimestamp.enabled",  true);
+ pref("dom.event.highrestimestamp.enabled",  false);
+ #endif
+ 
+-pref("dom.webcomponents.enabled",           false);
++pref("dom.webcomponents.enabled",           true);
+ 
+ pref("javascript.enabled",                  true);
+ pref("javascript.options.strict",           false);
+@@ -4165,7 +4165,7 @@ pref("layers.acceleration.draw-fps", false);
+ // Enable DEAA antialiasing for transformed layers in the compositor
+ #if !defined(MOZ_WIDGET_GONK) && !defined(MOZ_WIDGET_ANDROID)
+ // Desktop prefs
+-pref("layers.deaa.enabled", true);
++pref("layers.deaa.enabled", false);
+ #else
+ // Mobile prefs
+ pref("layers.deaa.enabled", false);
+-- 
+2.2.1
+

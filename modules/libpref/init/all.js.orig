@@ -1067,7 +1067,7 @@ pref("dom.event.highrestimestamp.enabled",  true);
 pref("dom.event.highrestimestamp.enabled",  false);
 #endif
 
-pref("dom.webcomponents.enabled",           true);
+pref("dom.webcomponents.enabled",           false);
 
 pref("javascript.enabled",                  true);
 pref("javascript.options.strict",           false);
@@ -4170,7 +4170,7 @@ pref("layers.acceleration.draw-fps", false);
 // Enable DEAA antialiasing for transformed layers in the compositor
 #if !defined(MOZ_WIDGET_GONK) && !defined(MOZ_WIDGET_ANDROID)
 // Desktop prefs
-pref("layers.deaa.enabled", false);
+pref("layers.deaa.enabled", true);
 #else
 // Mobile prefs
 pref("layers.deaa.enabled", false);

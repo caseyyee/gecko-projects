@@ -2939,7 +2939,7 @@ ContainerState::PrepareImageLayer(PaintedLayerData* aData)
     ParentLayerIntRect clip =
       ViewAs<ParentLayerPixel>(ScaleToNearestPixels(aData->mItemClip.GetClipRect()));
     clip.MoveBy(ViewAs<ParentLayerPixel>(mParameters.mOffset));
-    imageLayer->SetClipRect(Some(clip));
+    imageLayer->SetClipRect(Nothing()); // FINDME!!! KIP!!! HACK!!! Return to imageLayer->SetClipRect(Some(clip));
   } else {
     imageLayer->SetClipRect(Nothing());
   }
@@ -3706,10 +3706,12 @@ ContainerState::ProcessDisplayItems(nsDisplayList* aList)
       // Note that items without their own layers can't be skipped this
       // way, since their PaintedLayer may decide it wants to draw them
       // into its buffer even if they're currently covered.
+      /*
       if (itemVisibleRect.IsEmpty() &&
           !item->ShouldBuildLayerEvenIfInvisible(mBuilder)) {
         continue;
       }
+      */
 
       // 3D-transformed layers don't necessarily draw in the order in which
       // they're added to their parent container layer.
@@ -3799,7 +3801,7 @@ ContainerState::ProcessDisplayItems(nsDisplayList* aList)
                    "If we have rounded rects, we must have a clip rect");
       // It has its own layer. Update that layer's clip and visible rects.
       if (itemClip.HasClip()) {
-        ownLayer->SetClipRect(Some(clipRect));
+        ownLayer->SetClipRect(Nothing()); // FINDME!!! KIP!!! HACK!! ownLayer->SetClipRect(Some(clipRect));
       } else {
         ownLayer->SetClipRect(Nothing());
       }

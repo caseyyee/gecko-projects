@@ -1,0 +1,52 @@
+***************
+*** 216,230 ****
+      Layer* layer = layerToRender->GetLayer();
+      uint32_t contentFlags = layer->GetContentFlags();
+  
+      if (layer->GetEffectiveVisibleRegion().IsEmpty() &&
+          !layer->AsContainerLayer()) {
+        continue;
+      }
+  
+      const gfx::Matrix4x4 childTransform = layer->GetEffectiveTransform();
+      // We flip between pre-rendered and Gecko-rendered VR based on whether
+      // the child layer of this VR container layer has PRESERVE_3D or not.
+-     if (contentFlags & Layer::CONTENT_PRESERVE_3D == 0) {
+        // This layer is native VR
+        DUMP("%p Switching to pre-rendered VR\n", aContainer);
+  
+--- 216,232 ----
+      Layer* layer = layerToRender->GetLayer();
+      uint32_t contentFlags = layer->GetContentFlags();
+  
++ /*
+      if (layer->GetEffectiveVisibleRegion().IsEmpty() &&
+          !layer->AsContainerLayer()) {
+        continue;
+      }
++ */
+  
+      const gfx::Matrix4x4 childTransform = layer->GetEffectiveTransform();
+      // We flip between pre-rendered and Gecko-rendered VR based on whether
+      // the child layer of this VR container layer has PRESERVE_3D or not.
++     if ((contentFlags & Layer::CONTENT_PRESERVE_3D) == 0) {
+        // This layer is native VR
+        DUMP("%p Switching to pre-rendered VR\n", aContainer);
+  
+***************
+*** 241,247 ****
+        // up/down.
+        nsIntRect layerBounds = layer->GetLayerBounds();
+        DUMP("  layer %p bounds [%d %d %d %d] surfaceRect [%d %d %d %d]\n",
+-            XYWH(layerBounds), XYWH(surfaceRect));
+        bool restoreTransform = false;
+        if (layerBounds.width != surfaceRect.width ||
+            layerBounds.height != surfaceRect.height)
+--- 243,249 ----
+        // up/down.
+        nsIntRect layerBounds = layer->GetLayerBounds();
+        DUMP("  layer %p bounds [%d %d %d %d] surfaceRect [%d %d %d %d]\n",
++            layer, XYWH(layerBounds), XYWH(surfaceRect));
+        bool restoreTransform = false;
+        if (layerBounds.width != surfaceRect.width ||
+            layerBounds.height != surfaceRect.height)
